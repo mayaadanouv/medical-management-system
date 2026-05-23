@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: laravel-11-api
+    env: php
+    plan: free
+    buildCommand: chmod +x build.sh && ./build.sh
+    startCommand: apachectl start && tail -f /var/log/apache2/access.log
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: "false"
