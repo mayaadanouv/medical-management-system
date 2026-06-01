@@ -2,9 +2,11 @@
 
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\AppointmentController;
+use App\Http\Controllers\ContactMessageController;
 use App\Http\Controllers\DepartmentController;
 use App\Http\Controllers\DoctorController;
 use App\Http\Controllers\DoctorScheduleController;
+use App\Http\Controllers\FaqController;
 use App\Http\Controllers\PatientController;
 use App\Http\Controllers\SettingController;
 use App\Http\Controllers\UserController;
@@ -13,6 +15,9 @@ use Illuminate\Support\Facades\Route;
 // --- Public Routes (بدون حماية) ---
 Route::post('register', [UserController::class, 'register']);
 Route::post('login', [UserController::class, 'login']);
+// --- مسارات عامة (للموقع من الخارج) ---
+Route::post('contact_us', [ContactMessageController::class, 'store']); // لإرسال فورم الاستفسار
+
 // --- Protected Routes (تحتاج توكن Sanctum) ---
 Route::post('logout', [UserController::class, 'logout'])->middleware('auth:sanctum');
 // --- 1. Departments (الأقسام) ---
@@ -92,6 +97,7 @@ Route::prefix('appointments')->group(function () {
         Route::middleware('auth:sanctum')->group(function (){
             Route::post('/settings/update', [SettingController::class, 'updateSettings']);
             Route::post('/change_Password', [UserController::class, 'changePassword']);
+            Route::get('/messages', [ContactMessageController::class, 'adminIndex']); // لكي تري رسائل الناس وأرقام هواتفهم
 
         // إدارة شؤون الأطباء
         Route::prefix('doctors')->group(function () {
