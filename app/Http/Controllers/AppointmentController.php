@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StoreAppointmentRequest;
 use App\Http\Requests\UpdateAppointmentRequest;
 use App\Http\Resources\AppointmentResource;
+use App\Http\Resources\DoctorResource;
+use App\Http\Resources\PatientResource;
 use App\Models\Appointment;
 use App\Models\DoctorSchedule;
 use App\Models\Setting;
@@ -58,14 +60,12 @@ class AppointmentController extends Controller
     $date = $validated['appointment_date'];
     $requestedTime = Carbon::parse($validated['appointment_time'])->format('H:i:s');
 
-    // جميع الحالات ما عدا الملغى (cancelled)
     $activeStatuses = ['awaiting_payment', 'confirmed', 'suggested', 'pending_approval'];
 
-    // الشرط الأول: يمنع وجود أي موعد "نشط" عند نفس الطبيب (مهما كان التاريخ أو الوقت)
     $hasAnyActiveWithDoctor = Appointment::where('patient_id', $patientId)
         ->where('doctor_id', $doctorId)
         ->whereIn('status', $activeStatuses)
-        ->where('appointment_date', '>=', now()->toDateString()) // المواعيد المستقبلية فقط
+        ->where('appointment_date', '>=', now()->toDateString())
         ->exists();
 
     if ($hasAnyActiveWithDoctor) {
@@ -75,7 +75,6 @@ class AppointmentController extends Controller
         ], 400);
     }
 
-    // الشرط الثاني: يمنع وجود أي موعد عند "طبيب آخر" في نفس الوقت تماماً
     $hasTimeConflictAnywhere = Appointment::where('patient_id', $patientId)
         ->where('appointment_date', $date)
         ->where('appointment_time', $requestedTime)
@@ -89,7 +88,6 @@ class AppointmentController extends Controller
         ], 400);
     }
 
-    // --- تكملة التحقق من دوام الطبيب وتوفر الموعد ---
     $shift = $this->getDoctorShift($doctorId, $date);
     $settings = Setting::first();
     $duration = $settings ? (int)$settings->duration : 30;
@@ -103,7 +101,6 @@ class AppointmentController extends Controller
         Carbon::parse($shift->end_time)->subMinutes($duration)
     );
 
-    // فحص إذا كان الموعد محجوزاً من مريض آخر
     $isBookedByOther = Appointment::where('doctor_id', $doctorId)
         ->where('appointment_date', $date)
         ->where('appointment_time', $requestedTime)
@@ -113,7 +110,6 @@ class AppointmentController extends Controller
     if ($isWithinShift && !$isBookedByOther) {
         $appointment = $this->createAppointmentRecord($validated, $requestedTime, 'awaiting_payment', $patientId, $validated['reason'] ?? '');
         $admins=User::where('type_user','admin')->get();
-        // 2. إرسال الإشعار باستخدام الكلاس الموحد
             Notification::send($admins, new NotificationSystem([
                 'title' => 'New Appointment Pending Payment',
                 'message' => 'Patient ' . (Auth::user()->name ?? 'Guest') . ' has booked a new appointment with Dr. ' . ($appointment->doctor->user->name ?? 'the selected doctor') . '. Confirmation is pending payment.',
@@ -127,7 +123,6 @@ class AppointmentController extends Controller
         ], 201);
     }
 
-    // اقتراح أقرب موعد إذا لم يتوفر الموعد المطلوب
     return $this->handleNearestSlotSuggestion($doctorId, $date, $requestedTime, $validated, $patientId, $activeStatuses);
 }
     private function handleNearestSlotSuggestion($doctorId, $date, $requestedTime, $validated, $patientId, $activeStatuses)
@@ -135,7 +130,6 @@ class AppointmentController extends Controller
     $nearestSlot = $this->findNearestSlot($doctorId, $date, $requestedTime, $activeStatuses);
 
     if ($nearestSlot) {
-        // التأكد أن الموعد المقترح لا يتضارب مع موعد آخر للمريض عند طبيب مختلف
         $conflictAtSuggestedTime = Appointment::where('patient_id', $patientId)
             ->where('appointment_date', $nearestSlot['date'])
             ->where('appointment_time', $nearestSlot['time'])
@@ -162,21 +156,21 @@ class AppointmentController extends Controller
 
     return response()->json(['success' => false, 'message' => 'No slots found'], 404);
 }
-//,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+
 private function getDoctorShift(int $doctorId, $date)
 {
-    $dayName = Carbon::parse($date)->format('l'); // مثل Saturday, Sunday...
+    $dayName = Carbon::parse($date)->format('l');
 
     return DB::table('doctors_schedules')
         ->join('schedules', 'doctors_schedules.schedule_id', '=', 'schedules.id')
         ->where('doctors_schedules.doctor_id', $doctorId)
         ->where('schedules.day', $dayName)
-        ->whereNull('doctors_schedules.deleted_at') // فحص الحذف في جدول الربط
-        ->whereNull('schedules.deleted_at')         // فحص الحذف في جدول الأيام
+        ->whereNull('doctors_schedules.deleted_at')
+        ->whereNull('schedules.deleted_at')
         ->select('doctors_schedules.start_time', 'doctors_schedules.end_time')
         ->first();
 }
-//.................................................
+
 private function findNearestSlot(int $doctorId, $date, $time, $activeStatuses)
 {
     $currentDate = Carbon::parse($date);
@@ -184,7 +178,6 @@ private function findNearestSlot(int $doctorId, $date, $time, $activeStatuses)
     $settings = Setting::first();
     $duration = $settings ? (int)$settings->duration : 30;
 
-    // البحث خلال الـ 7 أيام القادمة
     for ($dayOffset = 0; $dayOffset < 7; $dayOffset++) {
         $targetDate = $currentDate->copy()->addDays($dayOffset);
         $shift = $this->getDoctorShift($doctorId, $targetDate->format('Y-m-d'));
@@ -194,7 +187,6 @@ private function findNearestSlot(int $doctorId, $date, $time, $activeStatuses)
         $startTime = Carbon::parse($shift->start_time);
         $endTime = Carbon::parse($shift->end_time);
 
-        // إذا كان اليوم هو "اليوم الحالي"، نبدأ البحث من بعد الوقت الحالي بـ 15 دقيقة
         if ($targetDate->isToday()) {
             $startLoopTime = Carbon::now()->addMinutes(15);
             if ($startLoopTime->lessThan($startTime)) {
@@ -204,7 +196,6 @@ private function findNearestSlot(int $doctorId, $date, $time, $activeStatuses)
             $startLoopTime = $startTime->copy();
         }
 
-        // البحث عن أول Slot متاح في اليوم
         while ($startLoopTime->copy()->addMinutes($duration)->lessThanOrEqualTo($endTime)) {
             $candidateTime = $startLoopTime->format('H:i:s');
 
@@ -245,7 +236,6 @@ private function createAppointmentRecord($data, $time, $status, $patientId, $rea
     ]);
 }
 
- // جلب المواعيد التي رفع أصحابها الإيصالات ولم تُؤكد بعد
     public function getPendingApprovalAppointment()
     {
         $appointment = Appointment::with(['doctor.user', 'patient.user'])->pendingApproval()->get();
@@ -262,7 +252,6 @@ private function createAppointmentRecord($data, $time, $status, $patientId, $rea
             'data' => AppointmentResource::collection($appointment)
         ], 200);
     }
-    //جلب المواعيد يلي اصحابها لسا مادفعوو
     public function getWaitingPaymentAppointment()
     {
         $appointment = Appointment::with(['doctor.user', 'patient.user'])->waitingPayment()->get();
@@ -279,7 +268,6 @@ private function createAppointmentRecord($data, $time, $status, $patientId, $rea
             'data' => AppointmentResource::collection($appointment)
         ], 200);
     }
-    //جلب المواعيد يلي الادمن اكدهم
     public function getConfirmedAppointment()
     {
         $appointment = Appointment::with(['doctor.user', 'patient.user'])->confirmed()->get();
@@ -296,7 +284,6 @@ private function createAppointmentRecord($data, $time, $status, $patientId, $rea
             'data' => AppointmentResource::collection($appointment)
         ], 200);
     }
-     //تابع رفع الاشعار
     public function uploadPaymentReceipt(UpdateAppointmentRequest $request, Appointment $appointment)
     {
         $patient = Auth::user()->patient;
@@ -315,7 +302,6 @@ private function createAppointmentRecord($data, $time, $status, $patientId, $rea
             $appointment->load(['doctor.user', 'patient.user']);
             $admins = User::where('type_user', 'admin')->get();
 
-            // 2. إرسال الإشعار باستخدام الكلاس الموحد
             Notification::send($admins, new NotificationSystem([
                 'title' => 'New Payment Receipt Submitted',
                 'message' => 'Patient ' . (Auth::user()->name ?? 'Guest') . ' has uploaded a payment receipt for Appointment ID: #' . $appointment->id . '. Please review the attachment for confirmation.',
@@ -334,7 +320,6 @@ private function createAppointmentRecord($data, $time, $status, $patientId, $rea
             'message' => 'Error: Payment receipt file is required.',
         ], 400);
     }
-    //..................................................
     public function patientCancelAppointment(int $id)
     {
         $appointment =  Appointment::with(['doctor.user', 'patient.user'])->find($id);
@@ -363,7 +348,7 @@ private function createAppointmentRecord($data, $time, $status, $patientId, $rea
         $patient->increment('cancellation_count');
         $patient->refresh();
 
-        $doctor = $appointment->doctor->user; // تأكدي من علاقة doctor و user
+        $doctor = $appointment->doctor->user;
         if ($doctor) {
             $doctor->notify(new NotificationSystem([
                 'title' => 'Appointment Cancellation Notice',
@@ -373,7 +358,6 @@ private function createAppointmentRecord($data, $time, $status, $patientId, $rea
             ]));
         }
 
-        // 2. إرسال إشعار للأدمن (سيصله Database + Pusher)
         $admins = User::where('type_user', 'admin')->get();
 
         $adminMessage = 'Patient ' . (Auth::user()->name ?? 'Guest') . ' has cancelled their appointment. Current cancellation count: ' . $patient->cancellation_count . '.';
@@ -406,7 +390,6 @@ private function createAppointmentRecord($data, $time, $status, $patientId, $rea
             'cancellations_count' => $patient->cancellation_count
         ], 200);
     }
-    //..............................................
     public function doctorCancelAppointment(int $id)
     {
         $appointment = Appointment::with(['doctor.user', 'patient.user'])->find($id);
@@ -452,7 +435,6 @@ private function createAppointmentRecord($data, $time, $status, $patientId, $rea
             'data' => new AppointmentResource($appointment)
     ], 200);
     }
-    //....................................................
     public function forceDeleteCancelledAppointments()
 {
 
@@ -465,14 +447,13 @@ private function createAppointmentRecord($data, $time, $status, $patientId, $rea
         'message' => "Old archive cleaned. Total deleted records: {$deletedCount}.",
     ],200);
 }
-    //...............................
 public function cancelEntireDay(Request $request)
     {
         $request->validate([
         'date' => 'required|date|after_or_equal:today'
     ]);
-        $doctorUser = Auth::user(); // جلب كائن المستخدم الحالي (الطبيب)
-        $doctorId = $doctorUser->doctor->id; // الـ ID لاستخدامه في الاستعلام
+        $doctorUser = Auth::user();
+        $doctorId = $doctorUser->doctor->id;
         $date = $request->date;
         $appointments = Appointment::with(['doctor.user', 'patient.user'])
             ->where('doctor_id', $doctorId)
@@ -498,7 +479,6 @@ public function cancelEntireDay(Request $request)
                 ]));
             }
         }
-        // --- إرسال إشعار واحد للأدمن يلخص العملية ---
         $admins = User::where('type_user', 'admin')->get();
         if ($admins->isNotEmpty()) {
             Notification::send($admins, new NotificationSystem([
@@ -514,7 +494,6 @@ public function cancelEntireDay(Request $request)
             'message' => "All appointments on {$date} have been cancelled ({$count} appointments).",
         ], 200);
     }
-    //..........................................
     public function getCancelledAppointment()
     {
         $appointment = Appointment::with(['doctor.user', 'patient.user'])->cancelled()->get();
@@ -531,4 +510,233 @@ public function cancelEntireDay(Request $request)
             'data' => AppointmentResource::collection($appointment)
         ], 200);
     }
+
+    public function getCompletedAppointments()
+    {
+        $appointments = Appointment::with(['doctor.user', 'patient.user'])
+            ->where('status', 'completed')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Completed appointments retrieved successfully.',
+            'data' => AppointmentResource::collection($appointments)
+        ], 200);
+    }
+
+    public function completeAppointment(Request $request, int $id)
+    {
+        $request->validate([
+            'doctor_notes' => 'required|string|max:5000',
+        ]);
+
+        $appointment = Appointment::find($id);
+        if (!$appointment) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Appointment not found.'
+            ], 404);
+        }
+
+        $user = Auth::user();
+        if ($user->type_user !== 'doctor' || $appointment->doctor_id !== $user->doctor->id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized action. Only the assigned doctor can complete this appointment.'
+            ], 403);
+        }
+
+        $appointmentDateTime = Carbon::parse($appointment->appointment_date . ' ' . $appointment->appointment_time);
+        if (now()->lessThan($appointmentDateTime)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cannot complete the appointment before its scheduled time.'
+            ], 400);
+        }
+
+        if (in_array($appointment->status, ['cancelled'])) {
+            return response()->json([
+                'success' => false,
+                'message' => "This appointment is cancelled. You cannot add a note."
+            ], 400);
+        }
+
+        DB::beginTransaction();
+        try {
+            $appointment->update([
+                'doctor_notes' => $request->doctor_notes,
+                'status' => 'completed',
+            ]);
+
+            $appointment->increment('visit_count');
+
+            DB::commit();
+            $appointment->refresh();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Appointment completed successfully and visit count incremented.',
+                'data' => new AppointmentResource($appointment->load(['doctor.user', 'patient.user']))
+            ], 200);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Something went wrong while saving data.',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+    public function getDoctorAppointmentsByStatus(Request $request)
+{
+    $user = auth()->user();
+    if (!$user || !$user->doctor) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Unauthorized or doctor profile not found.',
+        ], 403);
+    }
+
+    $status = $request->query('status');
+
+    $query = Appointment::with(['doctor.user', 'patient.user'])
+        ->where('doctor_id', $user->doctor->id);
+
+    if ($status && $status !== 'all') {
+        $allowedStatuses = ['confirmed', 'canceled', 'completed'];
+        if (in_array($status, $allowedStatuses)) {
+            $query->$status();
+        }
+    }
+
+    $appointments = $query->latest('appointment_date')->get();
+
+    if ($appointments->isEmpty()) {
+        return response()->json([
+            'success' => true,
+            'message' => 'No appointments found for this status.',
+            'data'    => []
+        ], 200);
+    }
+
+    return response()->json([
+        'success' => true,
+        'message' => 'Appointments retrieved successfully.',
+        'data' => AppointmentResource::collection($appointments)
+    ], 200);
+}
+
+public function getMyPatients(Request $request)
+{
+    $user = auth()->user();
+    if (!$user || !$user->doctor) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Unauthorized or doctor profile not found.',
+        ], 403);
+    }
+
+    $doctorId = $user->doctor->id;
+
+    $patients = $user->doctor->patients()
+        ->with([
+            'user',
+            'appointments' => function($query) use ($doctorId) {
+                $query->where('doctor_id', $doctorId);
+            },
+            'appointments.doctor.user',
+            'appointments.doctor.department'
+        ])
+        ->get();
+
+    if ($patients->isEmpty()) {
+        return response()->json([
+            'success' => true,
+            'message' => 'You do not have any patients yet.',
+            'data'    => []
+        ], 200);
+    }
+
+    return response()->json([
+        'success' => true,
+        'message' => 'All your patients retrieved successfully.',
+        'data' => PatientResource::collection($patients)
+    ], 200);
+}
+public function getPatientAppointmentsByStatus(Request $request)
+{
+    $user = auth()->user();
+    if (!$user || !$user->patient) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Unauthorized or patient profile not found.',
+        ], 403);
+    }
+
+    $status = $request->query('status');
+
+    $query = Appointment::with(['doctor.user', 'patient.user'])
+        ->where('patient_id', $user->patient->id);
+
+    if ($status && $status !== 'all') {
+        $allowedStatuses = ['confirmed', 'canceled', 'completed'];
+        if (in_array($status, $allowedStatuses)) {
+            $query->$status();
+        }
+    }
+
+    $appointments = $query->latest('appointment_date')->get();
+
+    if ($appointments->isEmpty()) {
+        return response()->json([
+            'success' => true,
+            'message' => 'No appointments found for this status.',
+            'data'    => []
+        ], 200);
+    }
+
+    return response()->json([
+        'success' => true,
+        'message' => 'Appointments retrieved successfully.',
+        'data' => AppointmentResource::collection($appointments)
+    ], 200);
+}
+public function getMyDoctors(Request $request)
+{
+    $user = auth()->user();
+    if (!$user || !$user->patient) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Unauthorized or patient profile not found.',
+        ], 403);
+    }
+
+    $patientId = $user->patient->id;
+
+    $doctors = $user->patient->doctors()
+        ->with([
+            'user',
+            'department',
+            'appointments' => function($query) use ($patientId) {
+                $query->where('patient_id', $patientId);
+            },
+            'appointments.patient.user',
+        ])
+        ->get();
+
+    if ($doctors->isEmpty()) {
+        return response()->json([
+            'success' => true,
+            'message' => 'You do not have any doctors yet.',
+            'data'    => []
+        ], 200);
+    }
+
+    return response()->json([
+        'success' => true,
+        'message' => 'All your doctors retrieved successfully.',
+        'data' => DoctorResource::collection($doctors)
+    ], 200);
+}
 }
