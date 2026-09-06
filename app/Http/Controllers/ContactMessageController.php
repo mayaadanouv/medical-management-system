@@ -32,7 +32,7 @@ class ContactMessageController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => new ContactMessageResource( $messages)
+            'data' =>  ContactMessageResource::collection( $messages)
         ], 200);
     }
 }
