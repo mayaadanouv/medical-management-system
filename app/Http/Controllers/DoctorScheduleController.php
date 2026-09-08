@@ -61,6 +61,7 @@ class DoctorScheduleController extends Controller
             'end_time' => $validate['end_time']
         ]);
         $doctor->load('schedules');
+        $doctor->refresh();
         return response()->json([
             'success' => true,
             'message' => 'the update was successfully',
@@ -94,6 +95,8 @@ class DoctorScheduleController extends Controller
     }
     public function show($doctorId)
 {
+
+    \Log::info("الـ ID القادم للـ Controller هو: " . $doctorId);
     $doctor = Doctor::with(['user', 'department', 'schedules'])->findOrFail($doctorId);
     $doctorName=$doctor->user->name;
     return response()->json([
