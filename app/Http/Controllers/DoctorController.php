@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreDoctorRequest;
 use App\Http\Requests\UpdateDoctorRequest;
+use App\Http\Resources\DoctorArchivedResource;
 use App\Http\Resources\DoctorResource;
 use App\Models\Doctor;
 use App\Models\User;
@@ -47,7 +48,6 @@ class DoctorController extends Controller
             'data'=>new DoctorResource($doctor)
             ], 201);
     }
-   // عرض الاطباء المقبولين فقط
     public function index()
     {
         $doctors = Doctor::approved()->with(['user', 'department'])->get();
@@ -57,7 +57,6 @@ class DoctorController extends Controller
         'data'    => DoctorResource::collection($doctors)
     ], 200);
     }
-   // عرض الاطباء في قسم محدد
     public function getDoctorsByDepartment(int $department_id)
     {
         $doctors = Doctor::approved()->where('department_id', $department_id)->with(['user', 'department'])->get();
@@ -74,20 +73,40 @@ class DoctorController extends Controller
             'data'    => DoctorResource::collection($doctors)
         ], 200);
     }
-    public function show(int $id)
+    public function indexArchived()
     {
-        $doctor=Doctor::with(['user', 'department', 'schedules'])->find($id);
-    if (!$doctor)
-        {
+        $archived = Doctor::onlyTrashed()->with(['user', 'schedules'])->get();
+        if ($archived->isEmpty()) {
         return response()->json([
-            'success' => false,
-            'message' => 'Doctor not found'
+            'success' => true,
+            'message' => 'The archive is currently empty',
+            'data'    => []
+        ], 200);
+    }
+        return response()->json([
+        'success' => true,
+        'message' => 'The archived doctors were successfully brought in',
+        'data'    => DoctorArchivedResource::collection($archived)
+    ], 200);
+    }
+    public function show( $id)
+    {
+        if (request()->bearerToken()) {
+            if ($user = Auth::guard('sanctum')->user()) {
+                Auth::setUser($user);
+            }
+        }
+        $doctor = Doctor::with(['user', 'department', 'schedules'])->find($id);
+        if (!$doctor) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Doctor not found'
             ], 404);
         }
         return response()->json([
             'success' => true,
-            'message'=>'The doctor is data was successfully retrieved',
-            'data'    => new DoctorResource($doctor)
+            'message' => 'The doctor is data was successfully retrieved',
+            'data' => new DoctorResource($doctor)
         ], 200);
     }
     public function update(UpdateDoctorRequest $request)
@@ -114,7 +133,6 @@ class DoctorController extends Controller
             'data'    => new DoctorResource($doctor->load(['user', 'department']))
         ], 200);
     }
-    //عرض الاطباء يلي بحالة الانتظار
     public function getPendingDoctors()
     {
         $pendingDoctors = Doctor::pending()->get();
@@ -131,7 +149,6 @@ class DoctorController extends Controller
             'data'    => DoctorResource::collection($pendingDoctors)
         ], 200);
     }
-    //عرض الاطباء يلي بحالة رفض
     public function getrejectedDoctor()
     {
         $rejectedDoctor=Doctor::Rejected()->get();
@@ -148,7 +165,6 @@ class DoctorController extends Controller
             'data'    => DoctorResource::collection($rejectedDoctor)
         ], 200);
     }
-    //ارشفت الطبيب وكل البيانات التعلقة فيه
     public function archive($id)
     {
         $doctor = Doctor::findOrFail($id);
@@ -158,7 +174,6 @@ class DoctorController extends Controller
             'message' => 'The doctor and all his data were successfully transferred to the archive'
             ], 200);
     }
-    // جلب الطبيب من الأرشيف واستعادته مع توابعه
     public function restore($id)
     {
         $doctor = Doctor::withTrashed()->findOrFail($id);
@@ -169,24 +184,6 @@ class DoctorController extends Controller
             'data'    => new DoctorResource($doctor->load(['user', 'department']))
             ]);
     }
-     // عرض الأطباء المؤرشفين مع بيانات حساباتهم
-    public function indexArchived()
-    {
-        $archived = Doctor::onlyTrashed()->with(['user', 'schedules'])->get();
-        if ($archived->isEmpty()) {
-        return response()->json([
-            'success' => true,
-            'message' => 'The archive is currently empty',
-            'data'    => []
-        ], 200);
-    }
-        return response()->json([
-        'success' => true,
-        'message' => 'The archived doctors were successfully brought in',
-        'data'    => DoctorResource::collection($archived)
-    ], 200);
-    }
-      //تابع الحذف النهائي
     public function destroy($id)
     {
         $doctor = Doctor:: withTrashed()->findOrFail($id);
