@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\StorePatientRequest;
 use App\Http\Requests\UpdatePatientRequest;
+use App\Http\Resources\PatientArchivedResource;
 use App\Http\Resources\PatientResource;
 use App\Models\Patient;
 use App\Models\User;
@@ -54,7 +55,6 @@ class PatientController extends Controller
             'data'    => new PatientResource($patient->load('user'))
         ], 200);
     }
-    //عرض الحسابات النشطة للمرضى
     public function index()
     {
         $patient = Patient::active()->with('user')->latest()->get();
@@ -71,10 +71,7 @@ class PatientController extends Controller
             'data'    => PatientResource::collection($patient)
         ], 200);
     }
-    //عرض بيانات مريض محدد
-    /**
- * عرض ملف المريض التفصيلي (للالآدمن أو الطبيب أو المريض نفسه)
- */
+
 public function show(int $id)
 {
     $patient = Patient::with([
@@ -98,7 +95,6 @@ public function show(int $id)
         'data'    => new PatientResource($patient)
     ], 200);
 }
-    //عرض الحسابات المعطلة للمرضى
     public function getDisabledPatient()
     {
         $inactiveUsers = Patient::inactive()->latest()->get();
@@ -115,7 +111,6 @@ public function show(int $id)
             'data' => PatientResource::collection($inactiveUsers)
         ], 200);
     }
-    //تابع الارشفة
     public function archive($id)
     {
         $patient = Patient::findOrFail($id);
@@ -131,10 +126,13 @@ public function show(int $id)
             'message' => 'The patient and all associated data have been archived '
             ], 200);
     }
-    //تابع لعرض المرضى بلارشيف
     public function indexArchived()
     {
-        $archivedPatients=Patient::onlyTrashed()->with('user')->get();
+        $archivedPatients=Patient::onlyTrashed() ->with([
+            'user' => function ($query) {
+                $query->withTrashed();
+            }
+        ])->get();
         if ( $archivedPatients->isEmpty()) {
         return response()->json([
             'success' => true,
@@ -145,10 +143,9 @@ public function show(int $id)
         return response()->json([
             'success' => true,
             'message' => 'Patient data were successfully retrieved from the archive.',
-            'data'    => PatientResource::collection( $archivedPatients)
+            'data'    => PatientArchivedResource::collection( $archivedPatients)
         ], 200);
     }
-    //تابع استعادة
     public function restore($id)
     {
         $patient = Patient::withTrashed()->findOrFail($id);
@@ -156,10 +153,9 @@ public function show(int $id)
         return response()->json([
             'success' => true,
             'message' => 'Patient restored successfully',
-            'data'=>PatientResource::collection( $patient->load(['user']))
+            'data'=>new PatientResource( $patient->load(['user']))
             ], 200);
     }
-    //تابع الحذ النهائي
     public function destroy($id)
     {
         $patient=Patient::withTrashed()->findOrFail($id);
