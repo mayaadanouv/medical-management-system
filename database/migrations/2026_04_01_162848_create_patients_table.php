@@ -17,8 +17,8 @@ return new class extends Migration
             $table->enum('gender', ['male', 'female']);
             $table->date('birth_date');
             $table->text('address')->nullable();
-            $table->string('emergency_contact')->nullable();//رقم 
-            $table->text('medical_history')->nullable();//التاريخ المرضي
+            $table->string('emergency_contact')->nullable();
+            $table->text('medical_history')->nullable();
             $table->integer('cancellation_count')->default(0);
             $table->boolean('is_active')->default(true);
             $table->softDeletes();
