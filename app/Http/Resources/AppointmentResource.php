@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use Auth;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\Storage;
@@ -15,7 +16,13 @@ class AppointmentResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
-        $activeStatuses = ['awaiting_payment', 'confirmed', 'pending_approval'];
+        $user = Auth::user();
+        $canSeeNotes = $user && (
+            ($user->type_user === 'doctor' && $this->doctor_id === $user->doctor?->id) ||
+            ($user->type_user === 'patient' && $this->patient_id === $user->patient?->id)
+        );
+
+        $activeStatuses = ['awaiting_payment', 'confirmed', 'pending_approval', 'completed'];
         return [
         'id'               => $this->id,
         'status'           => $this->status,
@@ -27,6 +34,8 @@ class AppointmentResource extends JsonResource
             'suggested_date'=> $this->appointment_date,
             'suggested_time'=>$this->appointment_time,
         ]),
+        'doctor_notes' => $this->when($canSeeNotes, $this->doctor_notes),
+        'visit_count' => $this->when($canSeeNotes, $this->visit_count),
         'doctor' => [
             'id'   => $this->doctor->id,
             'name' => $this->doctor->user->name

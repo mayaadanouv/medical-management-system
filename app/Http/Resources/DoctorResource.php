@@ -17,7 +17,8 @@ class DoctorResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
-        $isAdmin = Auth::check() && Auth::user()->type_user === 'admin';
+        $user = Auth::user();
+        $canViewPrivateData = $user && ($user->type_user === 'admin' || $user->id === $this->user_id);
         $storage = App::make(Storage::class);
         return [
         'doctor_id'    => $this->id,
@@ -30,12 +31,8 @@ class DoctorResource extends JsonResource
         'profile_image'  => $this->profile_image
                 ? asset('storage/' . $this->profile_image)
                 : null,
-        'syndicate_number'  => $this->mergeWhen($isAdmin, [
-                'syndicate_number' => $this->syndicate_number
-            ]),
-            'certificate_image' => $this->mergeWhen($isAdmin, [
-                'certificate_image' => $this->certificate_image ? asset('storage/' . $this->certificate_image) : null
-            ]),
+        'syndicate_number' => $canViewPrivateData ? $this->syndicate_number : null,
+        'certificate_image' => $canViewPrivateData ? ($this->certificate_image ? asset('storage/' . $this->certificate_image) : null) : null,
         'work_schedules' => $this->whenLoaded('schedules', function() {
             return $this->schedules->filter(function($schedule) {
                 return is_null($schedule->pivot->deleted_at);
