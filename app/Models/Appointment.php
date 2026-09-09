@@ -35,4 +35,8 @@ class Appointment extends Model
     {
         return $query->where('status', 'cancelled');
     }
+    public function scopeCompleted($query)
+    {
+        return $query->where('status', 'completed');
+    }
 }

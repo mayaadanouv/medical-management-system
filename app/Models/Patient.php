@@ -35,5 +35,11 @@ class Patient extends Model
     {
         return $this->hasMany(Appointment::class);
     }
+    public function doctors()
+{
+    // جلب الأطباء عبر جدول المواعيد (الحجوزات) كجدول وسيط
+    return $this->belongsToMany(Doctor::class, 'appointments', 'patient_id', 'doctor_id')
+                ->distinct(); // لمنع تكرار الطبيب في القائمة إذا كان هناك أكثر من موعد معه
+}
 
 }

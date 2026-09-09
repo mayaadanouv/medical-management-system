@@ -23,7 +23,7 @@ class Doctor extends Model
 {
     return $this->belongsToMany(Schedule::class, 'doctors_schedules')
                 ->using(DoctorSchedule::class)
-                ->withPivot('id', 'start_time', 'end_time', 'deleted_at') 
+                ->withPivot('id', 'start_time', 'end_time', 'deleted_at')
                 ->wherePivotNull('deleted_at')
                 ->withTimestamps();
 }
@@ -46,4 +46,10 @@ class Doctor extends Model
     {
         return $query->where('status', 'pending');
     }
+    public function patients()
+{
+    // جلب المرضى عبر جدول المواعيد (الحجوزات) كجدول وسيط
+    return $this->belongsToMany(Patient::class, 'appointments', 'doctor_id', 'patient_id')
+                ->distinct(); // لمنع تكرار المريض
+}
 }
