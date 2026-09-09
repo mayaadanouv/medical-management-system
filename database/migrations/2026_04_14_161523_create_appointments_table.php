@@ -4,9 +4,8 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-return new class extends Migration
-{
-    /**
+return new class extends Migration {
+    /*
      * Run the migrations.
      */
     public function up(): void
@@ -17,16 +16,18 @@ return new class extends Migration
             $table->foreignId('patient_id')->nullable()->constrained('patients')->OnDelete('set null');
             $table->date('appointment_date');
             $table->time('appointment_time');
-            $table->enum('status', ['awaiting_payment', 'confirmed', 'cancelled', 'expired', 'suggested','pending_approval'])->default('awaiting_payment');
+            $table->enum('status', ['awaiting_payment', 'confirmed', 'cancelled', 'expired', 'suggested', 'pending_approval', 'completed'])->default('awaiting_payment');
             $table->text('reason');
             $table->string('payment_receipt')->nullable();
             $table->string('payment_token')->nullable();
             $table->timestamp('expires_at')->nullable();
+            $table->text('doctor_notes')->nullable();
+            $table->unsignedInteger('visit_count')->default(0);
             $table->timestamps();
         });
     }
 
-    /**
+    /*
      * Reverse the migrations.
      */
     public function down(): void
