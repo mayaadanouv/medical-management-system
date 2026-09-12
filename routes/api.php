@@ -7,6 +7,7 @@ use App\Http\Controllers\DepartmentController;
 use App\Http\Controllers\DoctorController;
 use App\Http\Controllers\DoctorScheduleController;
 use App\Http\Controllers\FaqController;
+use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PatientController;
 use App\Http\Controllers\SettingController;
 use App\Http\Controllers\UserController;
@@ -43,11 +44,14 @@ Route::post('logout', [UserController::class, 'logout'])->middleware('auth:sanct
         // عمليات الطبيب على حسابه الخاص
         Route::post('/store', [DoctorController::class, 'store'])->middleware('is_doctor');//اكمال عملية تخزين بيانات الطبيب
         Route::post('/update', [DoctorController::class, 'update'])->middleware('approved_doctor');//تعديل بيانات طبيب
+        Route::post('appointments/{id}/complete', [AppointmentController::class, 'completeAppointment']);//كتابة ملاحظة الطبيب بعد المعاينة
+        Route::get('/appointments/by_Status',[AppointmentController::class,'getDoctorAppointmentsByStatus']);//جلب المواعيد مع فلترتها حسب الحالة
+        Route::get('/my_patient',[AppointmentController::class,'getMyPatients']);//جلب المرضى للطبيب
     });
 
     // عرض عام للأطباء
         Route::get('', [DoctorController::class, 'index']);//عرض الاطباء
-        Route::get('/{id}', [DoctorController::class, 'show']);//عرض  طبيب محدد
+        Route::get('/{id}', [DoctorController::class, 'show']);//عرض  طبيب محد
     });
     // عرض الأطباء حسب القسم
     Route::get('/departments/{id}/doctors', [DoctorController::class, 'getDoctorsByDepartment']);
@@ -58,6 +62,8 @@ Route::post('logout', [UserController::class, 'logout'])->middleware('auth:sanct
         Route::post('/store', [PatientController::class, 'store'])->middleware('is_patient');//اكمال عملية تخزين بيانات مريض
         Route::middleware(['active_patient'])->group(function () {
             Route::put('/update', [PatientController::class, 'update']);//تعديل بيانات مريض
+            Route::get('/appointments/by_Status',[AppointmentController::class,'getPatientAppointmentsByStatus']);
+            Route::get('/my_doctor',[AppointmentController::class,'getMyDoctors']);
         });
 
         // عرض ملف المريض (للطبيب أو الإدمن)
@@ -130,6 +136,8 @@ Route::prefix('appointments')->group(function () {
             Route::get('/confirmed', [AppointmentController::class, 'getConfirmedAppointment']);//عرض الحجوزات يلي تم تاكيدها من قبل الادمن
             Route::delete('/delete', [AppointmentController::class, 'forceDeleteCancelledAppointments']);//خذف الخجوزات يلي مر فترة على الغاءها
             Route::get('/cancelled', [AppointmentController::class, 'getCancelledAppointment']);//عرض الحجوزات يلي تم ارشفتها من قبل الادمن
+            Route::get('/completed', [AppointmentController::class, 'getCompletedAppointments']);//عرض الحجوزات المكتملة
         });
     });
 });
+Route::get('notifications', [NotificationController::class, 'getUserNotifications'])->middleware('auth:sanctum');//عرض الاشعارات
