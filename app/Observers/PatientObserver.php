@@ -13,7 +13,6 @@ class PatientObserver
     public function deleted(Patient $patient): void
     {
         if (!$patient->isForceDeleting()) {
-            // 1. إلغاء المواعيد المستقبلية للمريض
             $patient->appointments()
                 ->where('appointment_date', '>=', now()->toDateString())
                 ->whereIn('status', ['confirmed', 'awaiting_payment', 'pending_approval'])
@@ -21,7 +20,6 @@ class PatientObserver
                     'status' => 'cancelled',
                 ]);
 
-            // 2. أرشفة حساب المستخدم
             $patient->user?->delete();
         }
     }
@@ -31,7 +29,6 @@ class PatientObserver
      */
     public function restored(Patient $patient): void
     {
-         // استعادة حساب المستخدم المرتبط لتمكينه من الدخول مرة أخرى
         if ($patient->user()->withTrashed()->exists()) {
             $patient->user()->withTrashed()->restore();
         }
@@ -51,10 +48,15 @@ class PatientObserver
                 ->update([
                     'status' => 'cancelled',
                 ]);
-            if ($patient->user()->withTrashed()->exists())
-                {
-                $patient->user()->withTrashed()->forceDelete();
-                }
+            // if ($patient->user()->withTrashed()->exists()) {
+            //     $patient->user()->withTrashed()->forceDelete();
+            // }
+        }
+    }
+    public function forceDeleted(Patient $patient): void
+    {
+        if ($patient->user()->withTrashed()->exists()) {
+            $patient->user()->withTrashed()->forceDelete();
         }
     }
     }
