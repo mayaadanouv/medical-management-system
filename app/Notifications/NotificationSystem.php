@@ -4,16 +4,14 @@ namespace App\Notifications;
 
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Notifications\Messages\MailMessage;
+//use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 use Illuminate\Notifications\Messages\BroadcastMessage;
-use Illuminate\Broadcasting\Channel;
 
 class NotificationSystem extends Notification implements ShouldQueue
 {
     use Queueable;
     public $details;
-
     /*
      * Create a new notification instance.
      */
@@ -22,34 +20,38 @@ class NotificationSystem extends Notification implements ShouldQueue
         $this->details = $details;
     }
 
-    /**
+    /*
      * Get the notification's delivery channels.
      *
      * @return array<int, string>
      */
     public function via(object $notifiable): array
     {
-        $channels = ['broadcast', 'database'];
+        // 1. نبدأ بالمصفوفة الأساسية
+        return ['broadcast', 'database'];
 
-        if ($notifiable->type_user == 'doctor' || $notifiable->type_user == 'admin') {
-            $channels[] = 'mail';
-        }
+        // if ($notifiable->type_user == 'doctor' || $notifiable->type_user == 'admin') {
+        //     $channels[] = 'mail';
+        // }
 
-        return $channels;
+        // 3. نرجع المصفوفة النهائية بعد التعديل
+        //return $channels;
     }
-
-    /**
+    /*
      * Get the mail representation of the notification.
      */
-    public function toMail(object $notifiable): MailMessage
-    {
-        return (new MailMessage)
-            ->subject($this->details['title'])
-            ->greeting('Hello ' . ($notifiable->name ?? 'User'))
-            ->line($this->details['message']);
-    }
+    // public function toMail(object $notifiable): MailMessage
+    // {
+    //     $url = $this->details['url'] ?? '#';
+    //     return (new MailMessage)
+    //         ->subject($this->details['title'])
+    //         ->greeting('Hello ' . ($notifiable->name ?? 'User'))
+    //         ->line($this->details['message'])
+    //         //->action('عرض جدول المواعيد', url($this->details['url']))
+    //         ;
+    // }
 
-    /**
+    /*
      * Get the array representation of the notification.
      *
      * @return array<string, mixed>
@@ -63,31 +65,11 @@ class NotificationSystem extends Notification implements ShouldQueue
             'url' => $this->details['url'] ?? null,
         ];
     }
-
-    /**
-     * Get the broadcast representation of the notification.
-     */
     public function toBroadcast(object $notifiable): BroadcastMessage
     {
         return new BroadcastMessage([
             'title' => $this->details['title'],
             'message' => $this->details['message'],
         ]);
-    }
-
-    /**
-     * تحديد اسم الحدث المخصص ليفهمه Pusher بوضوح
-     */
-    public function broadcastType(): string
-    {
-        return 'NewNotification';
-    }
-
-    /**
-     * البث عبر قناة عامة لكي يظهر مباشرة في الـ Debug Console دون قيود فرونت إند
-     */
-    public function broadcastOn(): array
-    {
-        return [new Channel('medical-channel')];
     }
 }
